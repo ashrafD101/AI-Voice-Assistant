@@ -1,37 +1,4 @@
-#!/usr/bin/env python3
-"""
-Voice-enabled AI assistant powered by ElevenLabs.
 
-Two modes:
-
-  1. agent   -> ElevenLabs Agents Platform (Conversational AI).
-                ElevenLabs handles speech recognition, LLM response generation,
-                turn-taking/interruptions and voice synthesis in one realtime
-                session. Least code, lowest latency.
-
-  2. custom  -> A pipeline you control, step by step:
-                Microphone -> ElevenLabs Scribe (speech-to-text)
-                           -> LLM (Claude) for the response
-                           -> ElevenLabs Text-to-Speech -> Speakers
-
-Setup
------
-    pip install "elevenlabs[pyaudio]" anthropic sounddevice numpy python-dotenv
-    # PyAudio needs PortAudio:  macOS: brew install portaudio
-    #                           Debian/Ubuntu: sudo apt install portaudio19-dev
-
-    Create a .env file next to this script:
-
-        ELEVENLABS_API_KEY=your_elevenlabs_key
-        ELEVENLABS_AGENT_ID=your_agent_id        # agent mode only
-        ANTHROPIC_API_KEY=your_anthropic_key     # custom mode only
-
-Run
----
-    python voice_assistant.py agent
-    python voice_assistant.py custom
-    python voice_assistant.py custom --voice-id <id> --threshold 600
-"""
 
 import argparse
 import io
@@ -47,19 +14,18 @@ try:
 
     load_dotenv()
 except ImportError:
-    pass  # fine if variables are already in the environment
+    pass  
 
 
-# --------------------------------------------------------------------------- #
+
 # Configuration
-# --------------------------------------------------------------------------- #
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
 
-# Custom pipeline settings (all overridable via environment variables)
+
 STT_MODEL = os.getenv("STT_MODEL", "scribe_v1")
-TTS_MODEL = os.getenv("TTS_MODEL", "eleven_flash_v2_5")  # low latency
-TTS_VOICE_ID = os.getenv("TTS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")  # "George"
+TTS_MODEL = os.getenv("TTS_MODEL", "eleven_flash_v2_5")  
+TTS_VOICE_ID = os.getenv("TTS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb") 
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 
 SYSTEM_PROMPT = (
@@ -70,17 +36,15 @@ SYSTEM_PROMPT = (
 
 EXIT_PHRASES = {"exit", "quit", "goodbye", "bye", "stop", "good bye"}
 
-# Audio settings
-MIC_RATE = 16000          # Hz, good for speech recognition
+
+MIC_RATE = 16000         
 CHUNK_MS = 30
 CHUNK_SAMPLES = MIC_RATE * CHUNK_MS // 1000
-TTS_RATE = 22050          # matches output_format "pcm_22050"
+TTS_RATE = 22050          
 MAX_HISTORY_TURNS = 10
 
 
-# --------------------------------------------------------------------------- #
 # MODE 1: ElevenLabs Agents Platform (all-in-one)
-# --------------------------------------------------------------------------- #
 def run_agent_mode() -> None:
     from elevenlabs.client import ElevenLabs
     from elevenlabs.conversational_ai.conversation import Conversation
@@ -97,7 +61,7 @@ def run_agent_mode() -> None:
     conversation = Conversation(
         client,
         ELEVENLABS_AGENT_ID,
-        # Only required for private agents; harmless for public ones.
+       
         requires_auth=bool(ELEVENLABS_API_KEY),
         audio_interface=DefaultAudioInterface(),
         callback_agent_response=lambda text: print(f"\nAssistant: {text}"),
@@ -107,7 +71,7 @@ def run_agent_mode() -> None:
         callback_user_transcript=lambda text: print(f"You: {text}"),
     )
 
-    # Ctrl+C ends the session cleanly
+   
     signal.signal(signal.SIGINT, lambda *_: conversation.end_session())
 
     print("Listening... speak to the assistant. Press Ctrl+C to end.\n")
@@ -116,9 +80,9 @@ def run_agent_mode() -> None:
     print(f"\nSession ended. Conversation ID: {conversation_id}")
 
 
-# --------------------------------------------------------------------------- #
+
 # MODE 2: Custom pipeline (Scribe STT -> Claude -> ElevenLabs TTS)
-# --------------------------------------------------------------------------- #
+
 class VoiceAssistant:
     def __init__(self, voice_id: str, threshold: float, silence_secs: float):
         import anthropic
@@ -136,7 +100,7 @@ class VoiceAssistant:
         self.silence_secs = silence_secs
         self.history: list[dict] = []
 
-    # ---- 1. Listen ------------------------------------------------------- #
+    # 1. Listen 
     def record_utterance(self, start_timeout: float = 15.0, max_secs: float = 30.0):
         """Record from the mic until the speaker pauses. Returns WAV bytes or None."""
         import numpy as np
@@ -147,7 +111,7 @@ class VoiceAssistant:
         def callback(indata, frames, time_info, status):
             q.put(indata.copy())
 
-        pre_roll = deque(maxlen=10)  # ~300 ms kept so first syllable isn't clipped
+        pre_roll = deque(maxlen=10) 
         frames: list = []
         speaking = False
         silent_chunks = 0
@@ -174,7 +138,7 @@ class VoiceAssistant:
                         speaking = True
                         frames.extend(pre_roll)
                     elif waited_chunks > start_limit:
-                        return None  # nobody spoke
+                        return None  
                 else:
                     frames.append(chunk)
                     silent_chunks = silent_chunks + 1 if rms < self.threshold else 0
@@ -190,16 +154,16 @@ class VoiceAssistant:
             wf.writeframes(audio.tobytes())
         return buf.getvalue()
 
-    # ---- 2. Speech recognition (ElevenLabs Scribe) ----------------------- #
+    #2. Speech recognition (ElevenLabs Scribe)
     def transcribe(self, wav_bytes: bytes) -> str:
         result = self.eleven.speech_to_text.convert(
             file=io.BytesIO(wav_bytes),
             model_id=STT_MODEL,
-            tag_audio_events=False,  # skip "(laughter)" style tags
+            tag_audio_events=False,  
         )
         return (result.text or "").strip()
 
-    # ---- 3. Response generation (LLM) ------------------------------------ #
+    # 3. Response generation (LLM) 
     def think(self, user_text: str) -> str:
         self.history.append({"role": "user", "content": user_text})
         self.history = self.history[-MAX_HISTORY_TURNS * 2:]
@@ -214,7 +178,7 @@ class VoiceAssistant:
         self.history.append({"role": "assistant", "content": reply})
         return reply
 
-    # ---- 4. Audio creation (ElevenLabs TTS) + playback -------------------- #
+    # 4. Audio creation (ElevenLabs TTS) + playback 
     def speak(self, text: str) -> None:
         import numpy as np
         import sounddevice as sd
@@ -223,14 +187,14 @@ class VoiceAssistant:
             voice_id=self.voice_id,
             text=text,
             model_id=TTS_MODEL,
-            output_format=f"pcm_{TTS_RATE}",  # raw 16-bit PCM, no codec needed
+            output_format=f"pcm_{TTS_RATE}", 
         )
         pcm = b"".join(audio_stream)
         samples = np.frombuffer(pcm, dtype=np.int16)
         sd.play(samples, samplerate=TTS_RATE)
         sd.wait()
 
-    # ---- Main loop --------------------------------------------------------- #
+    #  Main loop
     def run(self) -> None:
         print("Voice assistant ready. Say 'goodbye' or press Ctrl+C to quit.\n")
         self.speak("Hi! How can I help you today?")
@@ -239,11 +203,11 @@ class VoiceAssistant:
             print("Listening...")
             wav = self.record_utterance()
             if wav is None:
-                continue  # silence, keep listening
+                continue 
 
             try:
                 user_text = self.transcribe(wav)
-            except Exception as e:  # network/API hiccup shouldn't kill the session
+            except Exception as e: 
                 print(f"[STT error] {e}")
                 continue
 
@@ -275,9 +239,9 @@ def run_custom_mode(args) -> None:
         print("\nBye!")
 
 
-# --------------------------------------------------------------------------- #
+
 # Entry point
-# --------------------------------------------------------------------------- #
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ElevenLabs voice assistant")
     sub = parser.add_subparsers(dest="mode", required=True)
