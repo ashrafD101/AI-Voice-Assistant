@@ -18,7 +18,7 @@ except ImportError:
 
 
 
-# Configuration
+
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
 
@@ -44,7 +44,7 @@ TTS_RATE = 22050
 MAX_HISTORY_TURNS = 10
 
 
-# MODE 1: ElevenLabs Agents Platform (all-in-one)
+
 def run_agent_mode() -> None:
     from elevenlabs.client import ElevenLabs
     from elevenlabs.conversational_ai.conversation import Conversation
@@ -81,7 +81,7 @@ def run_agent_mode() -> None:
 
 
 
-# MODE 2: Custom pipeline (Scribe STT -> Claude -> ElevenLabs TTS)
+
 
 class VoiceAssistant:
     def __init__(self, voice_id: str, threshold: float, silence_secs: float):
@@ -100,7 +100,7 @@ class VoiceAssistant:
         self.silence_secs = silence_secs
         self.history: list[dict] = []
 
-    # 1. Listen 
+   
     def record_utterance(self, start_timeout: float = 15.0, max_secs: float = 30.0):
         """Record from the mic until the speaker pauses. Returns WAV bytes or None."""
         import numpy as np
@@ -154,7 +154,7 @@ class VoiceAssistant:
             wf.writeframes(audio.tobytes())
         return buf.getvalue()
 
-    #2. Speech recognition (ElevenLabs Scribe)
+   
     def transcribe(self, wav_bytes: bytes) -> str:
         result = self.eleven.speech_to_text.convert(
             file=io.BytesIO(wav_bytes),
@@ -163,7 +163,7 @@ class VoiceAssistant:
         )
         return (result.text or "").strip()
 
-    # 3. Response generation (LLM) 
+  
     def think(self, user_text: str) -> str:
         self.history.append({"role": "user", "content": user_text})
         self.history = self.history[-MAX_HISTORY_TURNS * 2:]
@@ -178,7 +178,7 @@ class VoiceAssistant:
         self.history.append({"role": "assistant", "content": reply})
         return reply
 
-    # 4. Audio creation (ElevenLabs TTS) + playback 
+   
     def speak(self, text: str) -> None:
         import numpy as np
         import sounddevice as sd
@@ -194,7 +194,7 @@ class VoiceAssistant:
         sd.play(samples, samplerate=TTS_RATE)
         sd.wait()
 
-    #  Main loop
+ 
     def run(self) -> None:
         print("Voice assistant ready. Say 'goodbye' or press Ctrl+C to quit.\n")
         self.speak("Hi! How can I help you today?")
@@ -240,7 +240,6 @@ def run_custom_mode(args) -> None:
 
 
 
-# Entry point
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="ElevenLabs voice assistant")
